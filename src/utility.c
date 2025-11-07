@@ -21,8 +21,8 @@ time_t getResetTime() {
 }
 
 struct tm *getLocalTime() {
-    time_t time;
-    return localtime(&time);
+    time_t t = time(NULL);
+    return localtime(&t);
 }
 
 //Reads date input from command line

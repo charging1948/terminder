@@ -39,9 +39,11 @@ List createList() {
  */
 void clearList(List list) {
     Element *current = list.head->next;
-    while (current->next != current) {
+    while (current != list.tail) {
         Element *old = current;
         current = current->next;
+        free((char *)old->appointment->description);
+        free(old->appointment);
         free(old);
     }
     list.head->next = list.tail;
@@ -64,18 +66,21 @@ void insertElement(List list, time_t start, const char *text) {
 
     struct Element *element = (struct Element *)malloc(sizeof(struct Element));
     element->appointment = appointment;
+
     Element *current = list.head;
-    while (current != current->next) {
-
-        Element *old = current;
-        current = current->next;
-
-        if (current == current->next ||
-            difftime(start, current->appointment->start) <= 0) {
-            element->next = old->next;
-            old->next = element;
+    // Find the correct position to insert (chronologically)
+    while (current->next != list.tail) {
+        if (difftime(start, current->next->appointment->start) <= 0) {
+            // Insert before current->next
+            element->next = current->next;
+            current->next = element;
+            return;
         }
+        current = current->next;
     }
+    // Insert at the end (before tail)
+    element->next = list.tail;
+    current->next = element;
 }
 /**
  * @brief Searches list for an element and returns it if found.
@@ -89,7 +94,7 @@ void insertElement(List list, time_t start, const char *text) {
  */
 Element *findElement(List list, const char *text) {
     Element *current = list.head->next;
-    while (current->next != current) {
+    while (current != list.tail) {
         const char *desc = current->appointment->description;
         if (strcmp(desc, text) == 0)
             return current;
@@ -108,19 +113,20 @@ Element *findElement(List list, const char *text) {
  * @return true, if the element successfully got deleted, false if nothing was deleted.
  */
 bool deleteElement(List list, const char *text) {
-    bool result = false;
     Element *current = list.head;
-    while (current->next != current->next->next) {
+    while (current->next != list.tail) {
         const char *desc = current->next->appointment->description;
-        if (strncmp(desc, text, sizeof((char *)desc)) == 0) {
+        if (strcmp(desc, text) == 0) {
             Element *old = current->next;
             current->next = old->next;
+            free((char *)old->appointment->description);
+            free(old->appointment);
             free(old);
-            result = true;
+            return true;
         }
         current = current->next;
     }
-    return result;
+    return false;
 }
 /**
  * @brief Prints appointment data to command line.
@@ -152,7 +158,7 @@ void printList(List list, int day, int month, int year) {
     struct Element *ptr = list.head->next;
     bool found = false;
 
-    while (ptr != ptr->next) {
+    while (ptr != list.tail) {
         struct tm *start = localtime(&ptr->appointment->start);
         if ((start->tm_mday == day && start->tm_mon == month &&
             start->tm_year == year) || ignoreDate) {
@@ -204,13 +210,15 @@ List parseFile(const char *filename) {
     ssize_t read;
     while ((read = getline(&line, &len, file)) != -1) {
         char *token = strtok(line, "|");
-        char *description = token;
+        char *description = strdup(token);
         token = strtok(NULL, ";");
         time_t start = (time_t) strtol(token, NULL, 10);
-        time_t ct = time(NULL);
         if (difftime(start, getResetTime()) >= 0)
             insertElement(list, start, description);
+        else
+            free(description);
     }
+    free(line);
     fclose(file);
     return list;
 }
@@ -237,7 +245,7 @@ void saveList(List list, const char *filename) {
         exit(1);
     }
     Element *current = list.head->next;
-    while (current->next != current) {
+    while (current != list.tail) {
         fprintf(file, "%s|", current->appointment->description);
         fprintf(file, "%ld;\n", current->appointment->start);
         current = current->next;
